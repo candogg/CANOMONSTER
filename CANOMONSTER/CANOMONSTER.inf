@@ -1,0 +1,77 @@
+;
+; CANOMONSTER.inf
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=System ; TODO: specify appropriate Class
+ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318} ; TODO: specify appropriate ClassGuid
+Provider=%ManufacturerName%
+CatalogFile=CANOMONSTER.cat
+DriverVer= ; TODO: set DriverVer in stampinf property pages
+PnpLockdown=1
+
+[DestinationDirs]
+DefaultDestDir = 12
+CANOMONSTER_Device_CoInstaller_CopyFiles = 11
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+CANOMONSTER.sys  = 1,,
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll=1 ; make sure the number matches with SourceDisksNames
+
+;*****************************************
+; Install Section
+;*****************************************
+
+[Manufacturer]
+%ManufacturerName%=Standard,NT$ARCH$
+
+[Standard.NT$ARCH$]
+%CANOMONSTER.DeviceDesc%=CANOMONSTER_Device, Root\CANOMONSTER ; TODO: edit hw-id
+
+[CANOMONSTER_Device.NT]
+CopyFiles=Drivers_Dir
+
+[Drivers_Dir]
+CANOMONSTER.sys
+
+;-------------- Service installation
+[CANOMONSTER_Device.NT.Services]
+AddService = CANOMONSTER,%SPSVCINST_ASSOCSERVICE%, CANOMONSTER_Service_Inst
+
+; -------------- CANOMONSTER driver install sections
+[CANOMONSTER_Service_Inst]
+DisplayName    = %CANOMONSTER.SVCDESC%
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\CANOMONSTER.sys
+
+;
+;--- CANOMONSTER_Device Coinstaller installation ------
+;
+
+[CANOMONSTER_Device.NT.CoInstallers]
+AddReg=CANOMONSTER_Device_CoInstaller_AddReg
+CopyFiles=CANOMONSTER_Device_CoInstaller_CopyFiles
+
+[CANOMONSTER_Device_CoInstaller_AddReg]
+HKR,,CoInstallers32,0x00010000, "WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll,WdfCoInstaller"
+
+[CANOMONSTER_Device_CoInstaller_CopyFiles]
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll
+
+[CANOMONSTER_Device.NT.Wdf]
+KmdfService =  CANOMONSTER, CANOMONSTER_wdfsect
+[CANOMONSTER_wdfsect]
+KmdfLibraryVersion = $KMDFVERSION$
+
+[Strings]
+SPSVCINST_ASSOCSERVICE= 0x00000002
+ManufacturerName="<Your manufacturer name>" ;TODO: Replace with your manufacturer name
+DiskName = "CANOMONSTER Installation Disk"
+CANOMONSTER.DeviceDesc = "CANOMONSTER Device"
+CANOMONSTER.SVCDESC = "CANOMONSTER Service"
