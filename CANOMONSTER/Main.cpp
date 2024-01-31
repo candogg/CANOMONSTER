@@ -1,5 +1,9 @@
 #include "Driver.h"
 
+/// <summary>
+/// Author: Can DOGU
+/// </summary>
+
 WCHAR ProtectedProcessName[PROCESS_NAME_SIZE + 1] = { 0 };
 PVOID ProtectedProcess = NULL;
 HANDLE ProtectedProcessId = { 0 };
