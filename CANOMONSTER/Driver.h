@@ -2,6 +2,15 @@
 
 #include <ntddk.h>
 
-#define DRIVER_TAG 'klbc'
 #define CB_PROCESS_TERMINATE 0x0001
 #define CB_THREAD_TERMINATE  0x0001
+#define PROCESS_NAME_SIZE 200
+
+PVOID ProcessRegistrationHandle;
+NTSTATUS ProcCreateCloseCallback(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+NTSTATUS CompleteRequest(PIRP Irp, NTSTATUS status = STATUS_SUCCESS, ULONG_PTR info = 0);
+VOID DriverUnload(PDRIVER_OBJECT DriverObject);
+NTSTATUS RegisterCallbacks(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT DeviceObject);
+OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB_PRE_OPERATION_INFORMATION OperationInformation);
+VOID PsCreateProcessNotifyCallback(_Inout_ PEPROCESS Process, _In_ HANDLE ProcessId, _In_opt_ PPS_CREATE_NOTIFY_INFO CreateInfo);
+NTSTATUS CheckProcessMatch(_In_ PCUNICODE_STRING pustrCommand, _In_ PEPROCESS Process, _In_ HANDLE ProcessId);

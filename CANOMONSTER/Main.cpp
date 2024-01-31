@@ -1,120 +1,100 @@
 #include "Driver.h"
 
-PVOID ProcessRegistrationHandle;
-UNICODE_STRING g_RegPath;
-NTSTATUS ProcCreateCloseCallback(PDEVICE_OBJECT DeviceObject, PIRP Irp);
-
-_IRQL_requires_max_(DISPATCH_LEVEL)
-NTSTATUS CompleteRequest(PIRP Irp, NTSTATUS status = STATUS_SUCCESS, ULONG_PTR info = 0);
-
-void ProcUnloadCallback(PDRIVER_OBJECT DriverObject);
-
-_IRQL_requires_max_(APC_LEVEL)
-NTSTATUS RegisterCallbacks(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT DeviceObject);
-
-_IRQL_requires_max_(APC_LEVEL)
-OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB_PRE_OPERATION_INFORMATION OperationInformation);
-
+WCHAR   TdwProtectName[PROCESS_NAME_SIZE + 1] = { 0 };
+PVOID   TdProtectedTargetProcess = NULL;
+HANDLE  TdProtectedTargetProcessId = { 0 };
 
 extern "C"
-NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
-	PAGED_CODE();
+NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) 
+{
+	UNREFERENCED_PARAMETER(RegistryPath);
 
-	g_RegPath.Buffer = (PWSTR)ExAllocatePool2(POOL_FLAG_PAGED,
-		RegistryPath->Length, DRIVER_TAG);
+	DbgPrintEx(0, 0, "CANOMONSTER driver running\n");
 
-	if (g_RegPath.Buffer == NULL) {
-		DbgPrintEx(0, 0, "Failed allocation\n");
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
-
-	g_RegPath.Length = g_RegPath.MaximumLength = RegistryPath->Length;
-	memcpy(g_RegPath.Buffer, RegistryPath->Buffer, g_RegPath.Length);
-
-	DbgPrintEx(0, 0, "ProcCallback Driver Entry Called 0x%p\n", DriverObject);
-	DbgPrintEx(0, 0, "Registry Path %wZ\n", g_RegPath);
-
-	DriverObject->DriverUnload = ProcUnloadCallback;
+	DriverObject->DriverUnload = DriverUnload;
 	DriverObject->MajorFunction[IRP_MJ_CREATE] = ProcCreateCloseCallback;
 	DriverObject->MajorFunction[IRP_MJ_CLOSE] = ProcCreateCloseCallback;
 
 	UNICODE_STRING name;
-	RtlInitUnicodeString(&name, L"\\Device\\ProcCallback");
+	RtlInitUnicodeString(&name, L"\\Device\\CANOMONSTER");
 	PDEVICE_OBJECT DeviceObject;
 	NTSTATUS status = IoCreateDevice(DriverObject, 0, &name, FILE_DEVICE_UNKNOWN, 0, FALSE, &DeviceObject);
 
-	if (!NT_SUCCESS(status)) {
-		DbgPrintEx(0, 0, "Error creating device : 0x % X\n", status);
-		ExFreePool(g_RegPath.Buffer);
+	if (!NT_SUCCESS(status)) 
+	{
+		DbgPrintEx(0, 0, "Error creating device\n");
 		return status;
 	}
+
 	DriverObject->DeviceObject = DeviceObject;
 	DeviceObject->Flags |= DO_DIRECT_IO;
 
 	UNICODE_STRING symlink;
-	RtlInitUnicodeString(&symlink, L"\\??\\ProcCallback");
+	RtlInitUnicodeString(&symlink, L"\\??\\CANOMONSTER");
+
 	status = IoCreateSymbolicLink(&symlink, &name);
-	if (!NT_SUCCESS(status)) {
-		DbgPrintEx(0, 0, "Error creating device: 0x%X\n", status);
-		ExFreePool(g_RegPath.Buffer);
+
+	if (!NT_SUCCESS(status)) 
+	{
+		DbgPrintEx(0, 0, "Error creating device\n");
 		IoDeleteDevice(DeviceObject);
 		return status;
 	}
 
+	status = PsSetCreateProcessNotifyRoutineEx(PsCreateProcessNotifyCallback, FALSE);
+
+	if (!NT_SUCCESS(status))
+	{
+		DbgPrintEx(0, 0, "Error registering PsSetCreateProcessNotifyRoutineEx callbacks\n");
+		return status;
+	}
+
 	status = RegisterCallbacks(DriverObject, DeviceObject);
-	if (!NT_SUCCESS(status)) {
-		DbgPrintEx(0, 0, "Error registering callbacks: 0x%X\n", status);
-		ExFreePool(g_RegPath.Buffer);
+
+	if (!NT_SUCCESS(status)) 
+	{
+		DbgPrintEx(0, 0, "Error registering RegisterCallbacks callbacks\n");
 		return status;
 	}
 
-	if (!NT_SUCCESS(status)) {
-		DbgPrintEx(0, 0, "Error PsSetCreateProcessNotifyRoutineEx callbacks: 0x%X\n", status);
-		ExFreePool(g_RegPath.Buffer);
-		return status;
-	}
-
-	ExFreePool(g_RegPath.Buffer);
 	return status;
 }
 
-void ProcUnloadCallback(PDRIVER_OBJECT DriverObject) {
+VOID DriverUnload(PDRIVER_OBJECT DriverObject)
+{
 	UNREFERENCED_PARAMETER(DriverObject);
-	PAGED_CODE();
 
 	ObUnRegisterCallbacks(ProcessRegistrationHandle);
-	DbgPrintEx(0, 0, (DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "Pre/PostProcessHandleCallback Unloaded\n"));
+
+	PsSetCreateProcessNotifyRoutineEx(PsCreateProcessNotifyCallback, TRUE);
 
 	UNICODE_STRING symlink;
-	RtlInitUnicodeString(&symlink, L"\\??\\ProcCallback");
+	RtlInitUnicodeString(&symlink, L"\\??\\CANOMONSTER");
 	IoDeleteSymbolicLink(&symlink);
 	IoDeleteDevice(DriverObject->DeviceObject);
-	DbgPrintEx(0, 0, "ProcCallback Driver Unloaded\n");
+	DbgPrintEx(0, 0, "CANOMONSTER driver unloaded\n");
 }
 
-_IRQL_requires_max_(DISPATCH_LEVEL)
-NTSTATUS CompleteRequest(PIRP Irp, NTSTATUS status, ULONG_PTR info) {
-	PAGED_CODE();
+NTSTATUS CompleteRequest(PIRP Irp, NTSTATUS status, ULONG_PTR info) 
+{
 	Irp->IoStatus.Status = status;
 	Irp->IoStatus.Information = info;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return status;
 }
 
-NTSTATUS ProcCreateCloseCallback(PDEVICE_OBJECT, PIRP Irp) {
-	PAGED_CODE();
+NTSTATUS ProcCreateCloseCallback(PDEVICE_OBJECT, PIRP Irp) 
+{
 	return CompleteRequest(Irp);
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-NTSTATUS RegisterCallbacks(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT DeviceObject) {
+NTSTATUS RegisterCallbacks(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT DeviceObject)
+{
 	UNREFERENCED_PARAMETER(DeviceObject);
 	UNREFERENCED_PARAMETER(DriverObject);
-	PAGED_CODE();
-	NTSTATUS status;
 
-	OB_CALLBACK_REGISTRATION CallbackRegistration;
-	OB_OPERATION_REGISTRATION OperationRegistration;
+	OB_CALLBACK_REGISTRATION CallbackRegistration{};
+	OB_OPERATION_REGISTRATION OperationRegistration{};
 	OperationRegistration.ObjectType = PsProcessType;
 	OperationRegistration.Operations = OB_OPERATION_HANDLE_CREATE;
 	OperationRegistration.PreOperation = PreProcessHandleCallback;
@@ -128,22 +108,19 @@ NTSTATUS RegisterCallbacks(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT DeviceObj
 	CallbackRegistration.RegistrationContext = NULL;
 	CallbackRegistration.OperationRegistration = &OperationRegistration;
 
-	status = ObRegisterCallbacks(&CallbackRegistration, &ProcessRegistrationHandle);
+	NTSTATUS status = ObRegisterCallbacks(&CallbackRegistration, &ProcessRegistrationHandle);
 
 	if (!NT_SUCCESS(status))
 	{
-		DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "Failed to load ObRegisterCallbacks : 0x%X\n", status);
+		DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "Failed ObRegisterCallbacks\n");
 		return status;
 	}
-
-	DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "ObRegisterCallbacks Loaded\n");
 
 	return status;
 }
 
-_IRQL_requires_max_(APC_LEVEL)
-OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB_PRE_OPERATION_INFORMATION OperationInformation) {
-	PAGED_CODE();
+OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB_PRE_OPERATION_INFORMATION OperationInformation)
+{
 	UNREFERENCED_PARAMETER(RegistrationContext);
 
 	PACCESS_MASK DesiredAccess = NULL;
@@ -198,4 +175,57 @@ OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB
 	}
 Exit:
 	return OB_PREOP_SUCCESS;
+}
+
+VOID PsCreateProcessNotifyCallback(_Inout_ PEPROCESS Process, _In_ HANDLE ProcessId, _In_opt_ PPS_CREATE_NOTIFY_INFO CreateInfo)
+{
+	UNREFERENCED_PARAMETER(Process);
+
+	if (CreateInfo && CreateInfo->CommandLine != NULL)
+	{
+
+
+		DbgPrintEx(0, 0, "PID: %d, ProcessName: %wZ\n", ProcessId, CreateInfo->ImageFileName);
+	}		
+}
+
+NTSTATUS CheckProcessMatch(_In_ PCUNICODE_STRING pustrCommand, _In_ PEPROCESS Process, _In_ HANDLE ProcessId)
+{
+	NTSTATUS Status = STATUS_UNSUCCESSFUL;
+	WCHAR   CommandLineBuffer[PROCESS_NAME_SIZE + 1] = { 0 };
+	USHORT  CommandLineBytes = 0;
+
+	if (!pustrCommand || !pustrCommand->Buffer) 
+	{
+		Status = FALSE;
+		goto Exit;
+	}
+
+	if (pustrCommand->Length < (PROCESS_NAME_SIZE * sizeof(WCHAR)))
+	{
+		CommandLineBytes = pustrCommand->Length;
+	}
+	else
+	{
+		CommandLineBytes = PROCESS_NAME_SIZE * sizeof(WCHAR);
+	}
+
+	if (CommandLineBytes) 
+	{
+		memcpy(CommandLineBuffer, pustrCommand->Buffer, CommandLineBytes);
+
+		if (NULL != wcsstr(CommandLineBuffer, TdwProtectName)) 
+		{
+			TdProtectedTargetProcess = Process;
+			TdProtectedTargetProcessId = ProcessId;
+
+			Status = STATUS_SUCCESS;
+		}
+	}
+	else 
+	{
+		Status = FALSE;
+	}
+Exit:
+	return Status;
 }
