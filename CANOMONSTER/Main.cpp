@@ -2,6 +2,7 @@
 
 /// <summary>
 /// Author: Can DOGU
+/// A simple kernel driver for protecting user mode security endpoint applications
 /// </summary>
 
 WCHAR ProtectedProcessName[PROCESS_NAME_SIZE + 1] = { 0 };
