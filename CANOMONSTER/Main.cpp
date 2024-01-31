@@ -1,15 +1,19 @@
 #include "Driver.h"
 
-WCHAR   TdwProtectName[PROCESS_NAME_SIZE + 1] = { 0 };
-PVOID   TdProtectedTargetProcess = NULL;
-HANDLE  TdProtectedTargetProcessId = { 0 };
+WCHAR ProtectedProcessName[PROCESS_NAME_SIZE + 1] = { 0 };
+PVOID ProtectedProcess = NULL;
+HANDLE ProtectedProcessId = { 0 };
+BOOLEAN IsProtected;
 
 extern "C"
-NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) 
+NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 {
 	UNREFERENCED_PARAMETER(RegistryPath);
 
-	DbgPrintEx(0, 0, "CANOMONSTER driver running\n");
+	DbgPrintEx(0, 0, "CANOMONSTER driver calismaya basladi :)\n");
+
+	wcscpy(ProtectedProcessName, L"UnkillableProcess");
+	IsProtected = FALSE;
 
 	DriverObject->DriverUnload = DriverUnload;
 	DriverObject->MajorFunction[IRP_MJ_CREATE] = ProcCreateCloseCallback;
@@ -20,9 +24,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 	PDEVICE_OBJECT DeviceObject;
 	NTSTATUS status = IoCreateDevice(DriverObject, 0, &name, FILE_DEVICE_UNKNOWN, 0, FALSE, &DeviceObject);
 
-	if (!NT_SUCCESS(status)) 
+	if (!NT_SUCCESS(status))
 	{
-		DbgPrintEx(0, 0, "Error creating device\n");
+		DbgPrintEx(0, 0, "Device olusturulamadi\n");
 		return status;
 	}
 
@@ -34,9 +38,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 
 	status = IoCreateSymbolicLink(&symlink, &name);
 
-	if (!NT_SUCCESS(status)) 
+	if (!NT_SUCCESS(status))
 	{
-		DbgPrintEx(0, 0, "Error creating device\n");
+		DbgPrintEx(0, 0, "Device olusturulamadi\n");
 		IoDeleteDevice(DeviceObject);
 		return status;
 	}
@@ -45,15 +49,15 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 
 	if (!NT_SUCCESS(status))
 	{
-		DbgPrintEx(0, 0, "Error registering PsSetCreateProcessNotifyRoutineEx callbacks\n");
+		DbgPrintEx(0, 0, "PsSetCreateProcessNotifyRoutineEx callback kaydedilemedi\n");
 		return status;
 	}
 
 	status = RegisterCallbacks(DriverObject, DeviceObject);
 
-	if (!NT_SUCCESS(status)) 
+	if (!NT_SUCCESS(status))
 	{
-		DbgPrintEx(0, 0, "Error registering RegisterCallbacks callbacks\n");
+		DbgPrintEx(0, 0, "ObRegisterCallbacks callback kaydedilemedi\n");
 		return status;
 	}
 
@@ -72,10 +76,10 @@ VOID DriverUnload(PDRIVER_OBJECT DriverObject)
 	RtlInitUnicodeString(&symlink, L"\\??\\CANOMONSTER");
 	IoDeleteSymbolicLink(&symlink);
 	IoDeleteDevice(DriverObject->DeviceObject);
-	DbgPrintEx(0, 0, "CANOMONSTER driver unloaded\n");
+	DbgPrintEx(0, 0, "CANOMONSTER driver sonlandi :(\n");
 }
 
-NTSTATUS CompleteRequest(PIRP Irp, NTSTATUS status, ULONG_PTR info) 
+NTSTATUS CompleteRequest(PIRP Irp, NTSTATUS status, ULONG_PTR info)
 {
 	Irp->IoStatus.Status = status;
 	Irp->IoStatus.Information = info;
@@ -83,7 +87,7 @@ NTSTATUS CompleteRequest(PIRP Irp, NTSTATUS status, ULONG_PTR info)
 	return status;
 }
 
-NTSTATUS ProcCreateCloseCallback(PDEVICE_OBJECT, PIRP Irp) 
+NTSTATUS ProcCreateCloseCallback(PDEVICE_OBJECT, PIRP Irp)
 {
 	return CompleteRequest(Irp);
 }
@@ -112,7 +116,7 @@ NTSTATUS RegisterCallbacks(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT DeviceObj
 
 	if (!NT_SUCCESS(status))
 	{
-		DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "Failed ObRegisterCallbacks\n");
+		DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "ObRegisterCallbacks callback kaydedilemedi\n");
 		return status;
 	}
 
@@ -132,9 +136,14 @@ OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB
 		PEPROCESS openedProcess = (PEPROCESS)OperationInformation->Object;
 		HANDLE targetPID = PsGetProcessId(openedProcess);
 
-		if (targetPID != (HANDLE)5496 || targetPID == PsGetCurrentProcessId())
+		if (ProtectedProcess == NULL || targetPID != (HANDLE)ProtectedProcessId || targetPID == PsGetCurrentProcessId())
 		{
 			goto Exit;
+		}
+
+		if (!IsProtected)
+		{
+			DbgPrintEx(0, 0, "PID: %d, ProcessName: %ls korumaya aliniyor\n", ProtectedProcessId, ProtectedProcessName);
 		}
 
 		AccessBitsToClear = CB_PROCESS_TERMINATE;
@@ -142,9 +151,11 @@ OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB
 		switch (OperationInformation->Operation) {
 		case OB_OPERATION_HANDLE_CREATE:
 			DesiredAccess = &OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
+			IsProtected = TRUE;
 			break;
 		case OB_OPERATION_HANDLE_DUPLICATE:
 			DesiredAccess = &OperationInformation->Parameters->DuplicateHandleInformation.DesiredAccess;
+			IsProtected = TRUE;
 			break;
 		default:
 			goto Exit;
@@ -183,10 +194,13 @@ VOID PsCreateProcessNotifyCallback(_Inout_ PEPROCESS Process, _In_ HANDLE Proces
 
 	if (CreateInfo && CreateInfo->CommandLine != NULL)
 	{
+		NTSTATUS processMatchStatus = CheckProcessMatch(CreateInfo->CommandLine, Process, ProcessId);
 
-
-		DbgPrintEx(0, 0, "PID: %d, ProcessName: %wZ\n", ProcessId, CreateInfo->ImageFileName);
-	}		
+		if (processMatchStatus == STATUS_SUCCESS)
+		{
+			DbgPrintEx(0, 0, "PROCESS UYUMLU! PID: %d, KAYNAK: %wZ / HEDEF: %ls\n", ProcessId, CreateInfo->ImageFileName, ProtectedProcessName);
+		}
+	}
 }
 
 NTSTATUS CheckProcessMatch(_In_ PCUNICODE_STRING pustrCommand, _In_ PEPROCESS Process, _In_ HANDLE ProcessId)
@@ -195,7 +209,7 @@ NTSTATUS CheckProcessMatch(_In_ PCUNICODE_STRING pustrCommand, _In_ PEPROCESS Pr
 	WCHAR   CommandLineBuffer[PROCESS_NAME_SIZE + 1] = { 0 };
 	USHORT  CommandLineBytes = 0;
 
-	if (!pustrCommand || !pustrCommand->Buffer) 
+	if (!pustrCommand || !pustrCommand->Buffer)
 	{
 		Status = FALSE;
 		goto Exit;
@@ -210,19 +224,19 @@ NTSTATUS CheckProcessMatch(_In_ PCUNICODE_STRING pustrCommand, _In_ PEPROCESS Pr
 		CommandLineBytes = PROCESS_NAME_SIZE * sizeof(WCHAR);
 	}
 
-	if (CommandLineBytes) 
+	if (CommandLineBytes)
 	{
 		memcpy(CommandLineBuffer, pustrCommand->Buffer, CommandLineBytes);
 
-		if (NULL != wcsstr(CommandLineBuffer, TdwProtectName)) 
+		if (NULL != wcsstr(CommandLineBuffer, ProtectedProcessName))
 		{
-			TdProtectedTargetProcess = Process;
-			TdProtectedTargetProcessId = ProcessId;
+			ProtectedProcess = Process;
+			ProtectedProcessId = ProcessId;
 
 			Status = STATUS_SUCCESS;
 		}
 	}
-	else 
+	else
 	{
 		Status = FALSE;
 	}
