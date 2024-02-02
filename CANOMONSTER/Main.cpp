@@ -17,7 +17,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 
 	DbgPrintEx(0, 0, "CANOMONSTER driver calismaya basladi :)\n");
 
-	wcscpy(ProtectedProcessName, L"UnkillableProcess");
+	wcscpy(ProtectedProcessName, L"ProtectedService");
 	IsProtected = FALSE;
 
 	DriverObject->DriverUnload = DriverUnload;
@@ -148,10 +148,13 @@ OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB
 
 		if (!IsProtected)
 		{
-			DbgPrintEx(0, 0, "PID: %d, ProcessName: %ls korumaya aliniyor\n", ProtectedProcessId, ProtectedProcessName);
+			uintptr_t handleValue = reinterpret_cast<uintptr_t>(ProtectedProcessId);
+			int intValue = static_cast<int>(handleValue);
+
+			DbgPrintEx(0, 0, "PID: %d, ProcessName: %ls korumaya aliniyor\n", intValue, ProtectedProcessName);
 		}
 
-		AccessBitsToClear = CB_PROCESS_TERMINATE;
+		AccessBitsToClear = CB_PROCESS_TERMINATE | CB_PROCESS_CREATE_PROCESS;
 
 		switch (OperationInformation->Operation) {
 		case OB_OPERATION_HANDLE_CREATE:
@@ -168,14 +171,7 @@ OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB
 	}
 	else if (OperationInformation->ObjectType == *PsThreadType)
 	{
-		HANDLE targetPID = PsGetThreadProcessId((PETHREAD)OperationInformation->Object);
-
 		AccessBitsToClear = CB_THREAD_TERMINATE;
-
-		if (targetPID != (HANDLE)5496 || targetPID == PsGetCurrentProcessId())
-		{
-			goto Exit;
-		}
 	}
 	else
 	{
@@ -203,7 +199,10 @@ VOID PsCreateProcessNotifyCallback(_Inout_ PEPROCESS Process, _In_ HANDLE Proces
 
 		if (processMatchStatus == STATUS_SUCCESS)
 		{
-			DbgPrintEx(0, 0, "PROCESS UYUMLU! PID: %d, KAYNAK: %wZ / HEDEF: %ls\n", ProcessId, CreateInfo->ImageFileName, ProtectedProcessName);
+			uintptr_t handleValue = reinterpret_cast<uintptr_t>(ProcessId);
+			int intValue = static_cast<int>(handleValue);
+
+			DbgPrintEx(0, 0, "PROCESS UYUMLU! PID: %d, KAYNAK: %wZ / HEDEF: %ls\n", intValue, CreateInfo->ImageFileName, ProtectedProcessName);
 		}
 	}
 }
