@@ -23,6 +23,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 	DriverObject->DriverUnload = DriverUnload;
 	DriverObject->MajorFunction[IRP_MJ_CREATE] = ProcCreateCloseCallback;
 	DriverObject->MajorFunction[IRP_MJ_CLOSE] = ProcCreateCloseCallback;
+	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = HandleIoctl;
 
 	UNICODE_STRING name;
 	RtlInitUnicodeString(&name, L"\\Device\\CANOMONSTER");
@@ -95,6 +96,42 @@ NTSTATUS CompleteRequest(PIRP Irp, NTSTATUS status, ULONG_PTR info)
 NTSTATUS ProcCreateCloseCallback(PDEVICE_OBJECT, PIRP Irp)
 {
 	return CompleteRequest(Irp);
+}
+
+NTSTATUS HandleIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+{
+	NTSTATUS status = STATUS_SUCCESS;
+	PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
+
+	DbgPrintEx(0, 0, "IOCTL istegi geldi\n");
+
+	switch (irpStack->Parameters.DeviceIoControl.IoControlCode)
+	{
+	case IOCTL_CUSTOM_COMMAND:
+		DbgPrintEx(0, 0, "HandleCustomCommand\n");
+		status = HandleCustomCommand(DeviceObject, Irp);
+		break;
+	default:
+		DbgPrintEx(0, 0, "Default\n");
+		status = STATUS_INVALID_DEVICE_REQUEST;
+		break;
+	}
+
+	Irp->IoStatus.Status = status;
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+	Irp->IoStatus.Information = 0;
+
+	return status;
+}
+
+NTSTATUS HandleCustomCommand(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+{
+	UNREFERENCED_PARAMETER(DeviceObject);
+	UNREFERENCED_PARAMETER(Irp);
+
+	DbgPrintEx(0, 0, "IOCTL HancleCustomCommand metoduna iletildi\n");
+
+	return STATUS_SUCCESS;
 }
 
 NTSTATUS RegisterCallbacks(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT DeviceObject)
