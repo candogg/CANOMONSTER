@@ -24,6 +24,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 	DriverObject->MajorFunction[IRP_MJ_CREATE] = ProcCreateCloseCallback;
 	DriverObject->MajorFunction[IRP_MJ_CLOSE] = ProcCreateCloseCallback;
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = HandleIoctl;
+	DriverObject->MajorFunction[IRP_MJ_PNP] = HandleStopRemoveIoctl;
 
 	UNICODE_STRING name;
 	RtlInitUnicodeString(&name, L"\\Device\\CANOMONSTER");
@@ -95,6 +96,8 @@ NTSTATUS CompleteRequest(PIRP Irp, NTSTATUS status, ULONG_PTR info)
 
 NTSTATUS ProcCreateCloseCallback(PDEVICE_OBJECT, PIRP Irp)
 {
+
+
 	return CompleteRequest(Irp);
 }
 
@@ -117,11 +120,31 @@ NTSTATUS HandleIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 		break;
 	}
 
-	Irp->IoStatus.Status = status;
-	IoCompleteRequest(Irp, IO_NO_INCREMENT);
-	Irp->IoStatus.Information = 0;
+	CompleteRequest(Irp, status, 0);
 
 	return status;
+}
+
+NTSTATUS HandleStopRemoveIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+{
+	UNREFERENCED_PARAMETER(DeviceObject);
+
+    PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
+    NTSTATUS status = STATUS_SUCCESS;
+
+    switch (irpStack->MinorFunction) {
+        case IRP_MN_QUERY_STOP_DEVICE:
+        case IRP_MN_QUERY_REMOVE_DEVICE:
+            status = STATUS_UNSUCCESSFUL; 
+            break;
+        default:
+            status = Irp->IoStatus.Status;
+            break;
+    }
+
+	CompleteRequest(Irp, status, 0);
+
+    return status;
 }
 
 NTSTATUS HandleCustomCommand(PDEVICE_OBJECT DeviceObject, PIRP Irp)

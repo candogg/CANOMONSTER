@@ -18,3 +18,4 @@ VOID PsCreateProcessNotifyCallback(_Inout_ PEPROCESS Process, _In_ HANDLE Proces
 NTSTATUS CheckProcessMatch(_In_ PCUNICODE_STRING pustrCommand, _In_ PEPROCESS Process, _In_ HANDLE ProcessId);
 NTSTATUS HandleCustomCommand(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS HandleIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp);
+NTSTATUS HandleStopRemoveIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp);
