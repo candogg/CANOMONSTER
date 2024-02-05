@@ -96,7 +96,7 @@ NTSTATUS CompleteRequest(PIRP Irp, NTSTATUS status, ULONG_PTR info)
 
 NTSTATUS ProcCreateCloseCallback(PDEVICE_OBJECT, PIRP Irp)
 {
-
+	DbgPrintEx(0, 0, "Close istegi geldi\n");
 
 	return CompleteRequest(Irp);
 }
@@ -128,6 +128,8 @@ NTSTATUS HandleIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 NTSTATUS HandleStopRemoveIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
+
+	DbgPrintEx(0, 0, "Stop IOCTL istegi geldi\n");
 
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     NTSTATUS status = STATUS_SUCCESS;
