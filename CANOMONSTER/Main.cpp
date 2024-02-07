@@ -15,9 +15,11 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 {
 	UNREFERENCED_PARAMETER(RegistryPath);
 
+	NTSTATUS status = 0;
+
 	DbgPrintEx(0, 0, "CANOMONSTER driver calismaya basladi :)\n");
 
-	wcscpy(ProtectedProcessName, L"ProtectedService");
+	wcscpy(ProtectedProcessName, L"SessionLockService");
 	IsProtected = FALSE;
 
 	DriverObject->DriverUnload = DriverUnload;
@@ -29,7 +31,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 	UNICODE_STRING name;
 	RtlInitUnicodeString(&name, L"\\Device\\CANOMONSTER");
 	PDEVICE_OBJECT DeviceObject;
-	NTSTATUS status = IoCreateDevice(DriverObject, 0, &name, FILE_DEVICE_UNKNOWN, 0, FALSE, &DeviceObject);
+
+	status = IoCreateDevice(DriverObject, 0, &name, FILE_DEVICE_UNKNOWN, 0, FALSE, &DeviceObject);
 
 	if (!NT_SUCCESS(status))
 	{
