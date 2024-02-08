@@ -19,14 +19,12 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 
 	DbgPrintEx(0, 0, "CANOMONSTER driver calismaya basladi :)\n");
 
-	wcscpy(ProtectedProcessName, L"SessionLockService");
+	wcscpy(ProtectedProcessName, L"ProtectedService");
 	IsProtected = FALSE;
 
-	DriverObject->DriverUnload = DriverUnload;
 	DriverObject->MajorFunction[IRP_MJ_CREATE] = ProcCreateCloseCallback;
 	DriverObject->MajorFunction[IRP_MJ_CLOSE] = ProcCreateCloseCallback;
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = HandleIoctl;
-	DriverObject->MajorFunction[IRP_MJ_PNP] = HandleStopRemoveIoctl;
 
 	UNICODE_STRING name;
 	RtlInitUnicodeString(&name, L"\\Device\\CANOMONSTER");
@@ -99,7 +97,7 @@ NTSTATUS CompleteRequest(PIRP Irp, NTSTATUS status, ULONG_PTR info)
 
 NTSTATUS ProcCreateCloseCallback(PDEVICE_OBJECT, PIRP Irp)
 {
-	DbgPrintEx(0, 0, "Close istegi geldi\n");
+	DbgPrintEx(0, 0, "Create/Close istegi geldi\n");
 
 	return CompleteRequest(Irp);
 }
@@ -111,11 +109,20 @@ NTSTATUS HandleIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 
 	DbgPrintEx(0, 0, "IOCTL istegi geldi\n");
 
+	StopProtection(DeviceObject);
+
+	DbgPrintEx(0, 0, "IOCTL Code: 0x%x\n", irpStack->Parameters.DeviceIoControl.IoControlCode);
+	DbgPrintEx(0, 0, "Defined IOCTL Code: 0x%x\n", IOCTL_CUSTOM_COMMAND);
+
 	switch (irpStack->Parameters.DeviceIoControl.IoControlCode)
 	{
 	case IOCTL_CUSTOM_COMMAND:
 		DbgPrintEx(0, 0, "HandleCustomCommand\n");
-		status = HandleCustomCommand(DeviceObject, Irp);
+		status = HandleCustomCommand(DeviceObject);
+		break;
+	case IOCTL_STOP_PROTECTION:
+		DbgPrintEx(0, 0, "StopProtection\n");
+		status = StopProtection(DeviceObject);
 		break;
 	default:
 		DbgPrintEx(0, 0, "Default\n");
@@ -128,34 +135,16 @@ NTSTATUS HandleIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 	return status;
 }
 
-NTSTATUS HandleStopRemoveIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
+NTSTATUS StopProtection(PDEVICE_OBJECT DeviceObject)
 {
-	UNREFERENCED_PARAMETER(DeviceObject);
+	DeviceObject->DriverObject->DriverUnload = DriverUnload;
 
-	DbgPrintEx(0, 0, "Stop IOCTL istegi geldi\n");
-
-    PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
-    NTSTATUS status = STATUS_SUCCESS;
-
-    switch (irpStack->MinorFunction) {
-        case IRP_MN_QUERY_STOP_DEVICE:
-        case IRP_MN_QUERY_REMOVE_DEVICE:
-            status = STATUS_UNSUCCESSFUL; 
-            break;
-        default:
-            status = Irp->IoStatus.Status;
-            break;
-    }
-
-	CompleteRequest(Irp, status, 0);
-
-    return status;
+	return STATUS_SUCCESS;
 }
 
-NTSTATUS HandleCustomCommand(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+NTSTATUS HandleCustomCommand(PDEVICE_OBJECT DeviceObject)
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
-	UNREFERENCED_PARAMETER(Irp);
 
 	DbgPrintEx(0, 0, "IOCTL HancleCustomCommand metoduna iletildi\n");
 
