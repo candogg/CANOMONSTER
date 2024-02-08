@@ -256,7 +256,22 @@ OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB
 	}
 	else if (OperationInformation->ObjectType == *PsThreadType)
 	{
+		DbgPrintEx(0, 0, "Event %p\n", OperationInformation->ObjectType);
+
 		AccessBitsToClear = CB_THREAD_TERMINATE;
+
+		switch (OperationInformation->Operation) {
+		case OB_OPERATION_HANDLE_CREATE:
+			DesiredAccess = &OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
+			IsProtected = TRUE;
+			break;
+		case OB_OPERATION_HANDLE_DUPLICATE:
+			DesiredAccess = &OperationInformation->Parameters->DuplicateHandleInformation.DesiredAccess;
+			IsProtected = TRUE;
+			break;
+		default:
+			goto Exit;
+		}
 	}
 	else
 	{
