@@ -1,13 +1,32 @@
 #pragma once
 
 #include <ntddk.h>
+#include <ntstrsafe.h>
+#include <stdlib.h>
+#include <wdf.h>
 
 #define CB_PROCESS_TERMINATE 0x0001
 #define CB_PROCESS_CREATE_PROCESS 0x0080
 #define CB_THREAD_TERMINATE  0x0001
 #define PROCESS_NAME_SIZE 200
-#define IOCTL_CUSTOM_COMMAND CTL_CODE(FILE_DEVICE_UNKNOWN, 0x222000, METHOD_BUFFERED, FILE_ANY_ACCESS)
-#define IOCTL_STOP_PROTECTION CTL_CODE(FILE_DEVICE_UNKNOWN, 0x222003, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_CUSTOM_COMMAND CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800 + 2, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_STOP_PROTECTION CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800 + 3, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define IOCTL_START_PROTECTION CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800 + 4, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define SystemProcessInformation 5
+#define PoolTag 'enoN'
+
+typedef struct _SYSTEM_PROCESS_INFORMATION {
+	ULONG NextEntryOffset;
+	ULONG NumberOfThreads;
+	LARGE_INTEGER Reserved[3];
+	LARGE_INTEGER CreateTime;
+	LARGE_INTEGER UserTime;
+	LARGE_INTEGER KernelTime;
+	UNICODE_STRING ImageName;
+	ULONG BasePriority;
+	HANDLE ProcessId;
+	HANDLE InheritedFromProcessId;
+} SYSTEM_PROCESS_INFORMATION, * PSYSTEM_PROCESS_INFORMATION;
 
 PVOID ProcessRegistrationHandle;
 NTSTATUS ProcCreateCloseCallback(PDEVICE_OBJECT DeviceObject, PIRP Irp);
@@ -19,4 +38,13 @@ VOID PsCreateProcessNotifyCallback(_Inout_ PEPROCESS Process, _In_ HANDLE Proces
 NTSTATUS CheckProcessMatch(_In_ PCUNICODE_STRING pustrCommand, _In_ PEPROCESS Process, _In_ HANDLE ProcessId);
 NTSTATUS HandleIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp);
 NTSTATUS StopProtection(PDEVICE_OBJECT DeviceObject);
+NTSTATUS StartProtection(PDEVICE_OBJECT DeviceObject);
 NTSTATUS HandleCustomCommand(PDEVICE_OBJECT DeviceObject);
+NTSTATUS GetProcessIdByName(PUNICODE_STRING ProcessName, HANDLE* ProcessId);
+NTSTATUS GetProcessByProcessId(HANDLE ProcessId, PEPROCESS* Process);
+
+extern "C"
+NTSTATUS NTAPI ZwQuerySystemInformation(ULONG SystemInformationClass, PVOID SystemInformation, ULONG SystemInformationLength, PULONG ReturnLength);
+
+extern "C"
+NTSTATUS PsLookupProcessByProcessId(_In_  HANDLE    ProcessId, _Out_ PEPROCESS* Process);

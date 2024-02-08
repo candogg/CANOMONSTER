@@ -1,4 +1,4 @@
-#include "Driver.h"
+﻿#include "Driver.h"
 
 /// <summary>
 /// Author: Can DOGU
@@ -18,6 +18,29 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 	NTSTATUS status = 0;
 
 	DbgPrintEx(0, 0, "CANOMONSTER driver calismaya basladi :)\n");
+
+	HANDLE processId;
+	PEPROCESS process = nullptr;
+	UNICODE_STRING processName;
+	RtlInitUnicodeString(&processName, L"ProtectedService.exe");
+
+	status = GetProcessIdByName(&processName, &processId);
+
+	if (NT_SUCCESS(status))
+	{
+		uintptr_t handleValue = reinterpret_cast<uintptr_t>(processId);
+		int intValue = static_cast<int>(handleValue);
+
+		DbgPrintEx(0, 0, "Process PID: %d bulundu\n", intValue);
+
+		status = GetProcessByProcessId(processId, &process);
+
+		if (NT_SUCCESS(status))
+		{
+			ProtectedProcess = process;
+			ProtectedProcessId = processId;
+		}
+	}
 
 	wcscpy(ProtectedProcessName, L"ProtectedService");
 	IsProtected = FALSE;
@@ -109,10 +132,7 @@ NTSTATUS HandleIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 
 	DbgPrintEx(0, 0, "IOCTL istegi geldi\n");
 
-	StopProtection(DeviceObject);
-
 	DbgPrintEx(0, 0, "IOCTL Code: 0x%x\n", irpStack->Parameters.DeviceIoControl.IoControlCode);
-	DbgPrintEx(0, 0, "Defined IOCTL Code: 0x%x\n", IOCTL_CUSTOM_COMMAND);
 
 	switch (irpStack->Parameters.DeviceIoControl.IoControlCode)
 	{
@@ -123,6 +143,10 @@ NTSTATUS HandleIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 	case IOCTL_STOP_PROTECTION:
 		DbgPrintEx(0, 0, "StopProtection\n");
 		status = StopProtection(DeviceObject);
+		break;
+	case IOCTL_START_PROTECTION:
+		DbgPrintEx(0, 0, "StartProtection\n");
+		status = StartProtection(DeviceObject);
 		break;
 	default:
 		DbgPrintEx(0, 0, "Default\n");
@@ -138,6 +162,13 @@ NTSTATUS HandleIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 NTSTATUS StopProtection(PDEVICE_OBJECT DeviceObject)
 {
 	DeviceObject->DriverObject->DriverUnload = DriverUnload;
+
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS StartProtection(PDEVICE_OBJECT DeviceObject)
+{
+	DeviceObject->DriverObject->DriverUnload = NULL;
 
 	return STATUS_SUCCESS;
 }
@@ -300,4 +331,62 @@ NTSTATUS CheckProcessMatch(_In_ PCUNICODE_STRING pustrCommand, _In_ PEPROCESS Pr
 	}
 Exit:
 	return Status;
+}
+
+NTSTATUS GetProcessIdByName(PUNICODE_STRING ProcessName, HANDLE* ProcessId) 
+{
+	NTSTATUS status;
+	PSYSTEM_PROCESS_INFORMATION processInfo, nextProcessInfo;
+	ULONG bufferSize = 0;
+
+	status = ZwQuerySystemInformation(SystemProcessInformation, NULL, 0, &bufferSize);
+
+	if (status != STATUS_INFO_LENGTH_MISMATCH) 
+	{
+		return status;
+	}
+
+	if (bufferSize)
+	{
+		PVOID memory = ExAllocatePool2(POOL_FLAG_PAGED, bufferSize, PoolTag);
+
+		if (!memory)
+		{
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
+
+		status = ZwQuerySystemInformation(SystemProcessInformation, memory, bufferSize, &bufferSize);
+
+		if (!NT_SUCCESS(status))
+		{
+			ExFreePoolWithTag(memory, PoolTag);
+			return status;
+		}
+
+		processInfo = (PSYSTEM_PROCESS_INFORMATION)memory;
+
+		while (processInfo->NextEntryOffset != 0)
+		{
+			if (RtlEqualUnicodeString(&processInfo->ImageName, ProcessName, TRUE))
+			{
+				*ProcessId = processInfo->ProcessId;
+				ExFreePoolWithTag(memory, PoolTag);
+				return STATUS_SUCCESS;
+			}
+
+			nextProcessInfo = (PSYSTEM_PROCESS_INFORMATION)((PUCHAR)processInfo + processInfo->NextEntryOffset);
+			processInfo = nextProcessInfo;
+		}
+
+		ExFreePoolWithTag(memory, PoolTag);
+	}
+
+	return STATUS_NOT_FOUND;
+}
+
+NTSTATUS GetProcessByProcessId(HANDLE ProcessId, PEPROCESS* Process)
+{
+	NTSTATUS status = PsLookupProcessByProcessId(ProcessId, Process);
+
+	return status;
 }
