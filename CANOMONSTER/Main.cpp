@@ -1,4 +1,5 @@
 ﻿#include "Driver.h"
+#include "Enums.h"
 
 /// <summary>
 /// Author: Can DOGU
@@ -136,25 +137,101 @@ NTSTATUS HandleIoctl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
 
 	switch (irpStack->Parameters.DeviceIoControl.IoControlCode)
 	{
-	case IOCTL_CUSTOM_COMMAND:
-		DbgPrintEx(0, 0, "HandleCustomCommand\n");
-		status = HandleCustomCommand(DeviceObject);
-		break;
 	case IOCTL_STOP_PROTECTION:
-		DbgPrintEx(0, 0, "StopProtection\n");
-		status = StopProtection(DeviceObject);
+	{
+		if (NT_SUCCESS(CheckIrpData(irpStack, Irp, UNPROTECT)))
+		{
+			DbgPrintEx(0, 0, "StopProtection request valid\n");
+
+			status = StopProtection(DeviceObject);
+		}
+		else
+		{
+			DbgPrintEx(0, 0, "StopProtection request invalid\n");
+		}
+
 		break;
+	}
 	case IOCTL_START_PROTECTION:
-		DbgPrintEx(0, 0, "StartProtection\n");
-		status = StartProtection(DeviceObject);
+	{
+		if (NT_SUCCESS(CheckIrpData(irpStack, Irp, PROTECT)))
+		{
+			DbgPrintEx(0, 0, "StartProtection request valid\n");
+
+			status = StartProtection(DeviceObject);
+		}
+		else
+		{
+			DbgPrintEx(0, 0, "StartProtection request invalid\n");
+		}
+
 		break;
+	}
 	default:
+	{
 		DbgPrintEx(0, 0, "Default\n");
+
 		status = STATUS_INVALID_DEVICE_REQUEST;
+
 		break;
+	}
 	}
 
 	CompleteRequest(Irp, status, 0);
+
+	return status;
+}
+
+NTSTATUS CheckIrpData(_In_ PIO_STACK_LOCATION irpStack, _In_ PIRP Irp, _In_ ProtectionEnum operationType)
+{
+	NTSTATUS status = STATUS_INVALID_DEVICE_REQUEST;
+
+	UCHAR* inputData = (UCHAR*)Irp->AssociatedIrp.SystemBuffer;
+	ULONG inputDataLength = irpStack->Parameters.DeviceIoControl.InputBufferLength;
+
+	if (!inputData || inputDataLength == 0)
+	{
+		return status;
+	}
+
+	inputData[inputDataLength] = '\0';
+
+	while (*inputData && isspace(*inputData))
+	{
+		++inputData;
+		--inputDataLength;
+	}
+
+	UCHAR* endPtr = inputData + inputDataLength - 1;
+	while (endPtr >= inputData && isspace(*endPtr))
+	{
+		*endPtr-- = '\0';
+		--inputDataLength;
+	}
+
+	DbgPrintEx(0, 0, "Gelen data: %s\n", inputData);
+
+	switch (operationType)
+	{
+	case PROTECT:
+	{
+		if (strcmp((const char*)inputData, START_PROTECTION_TAG) == 0)
+		{
+			status = STATUS_SUCCESS;
+		}
+
+		break;
+	}
+	case UNPROTECT:
+	{
+		if (strcmp((const char*)inputData, STOP_PROTECTION_TAG) == 0)
+		{
+			status = STATUS_SUCCESS;
+		}
+
+		break;
+	}
+	}
 
 	return status;
 }
@@ -348,33 +425,33 @@ Exit:
 	return Status;
 }
 
-NTSTATUS GetProcessIdByName(PUNICODE_STRING ProcessName, HANDLE* ProcessId) 
+NTSTATUS GetProcessIdByName(PUNICODE_STRING ProcessName, HANDLE* ProcessId)
 {
 	NTSTATUS status;
 	PSYSTEM_PROCESS_INFORMATION processInfo, nextProcessInfo;
 	ULONG bufferSize = 0;
 
-	status = ZwQuerySystemInformation(SystemProcessInformation, NULL, 0, &bufferSize);
+	status = ZwQuerySystemInformation(PROCESS_SYSTEM_INFORMATION, NULL, 0, &bufferSize);
 
-	if (status != STATUS_INFO_LENGTH_MISMATCH) 
+	if (status != STATUS_INFO_LENGTH_MISMATCH)
 	{
 		return status;
 	}
 
 	if (bufferSize)
 	{
-		PVOID memory = ExAllocatePool2(POOL_FLAG_PAGED, bufferSize, PoolTag);
+		PVOID memory = ExAllocatePool2(POOL_FLAG_PAGED, bufferSize, POOL_TAG);
 
 		if (!memory)
 		{
 			return STATUS_INSUFFICIENT_RESOURCES;
 		}
 
-		status = ZwQuerySystemInformation(SystemProcessInformation, memory, bufferSize, &bufferSize);
+		status = ZwQuerySystemInformation(PROCESS_SYSTEM_INFORMATION, memory, bufferSize, &bufferSize);
 
 		if (!NT_SUCCESS(status))
 		{
-			ExFreePoolWithTag(memory, PoolTag);
+			ExFreePoolWithTag(memory, POOL_TAG);
 			return status;
 		}
 
@@ -385,7 +462,7 @@ NTSTATUS GetProcessIdByName(PUNICODE_STRING ProcessName, HANDLE* ProcessId)
 			if (RtlEqualUnicodeString(&processInfo->ImageName, ProcessName, TRUE))
 			{
 				*ProcessId = processInfo->ProcessId;
-				ExFreePoolWithTag(memory, PoolTag);
+				ExFreePoolWithTag(memory, POOL_TAG);
 				return STATUS_SUCCESS;
 			}
 
@@ -393,7 +470,7 @@ NTSTATUS GetProcessIdByName(PUNICODE_STRING ProcessName, HANDLE* ProcessId)
 			processInfo = nextProcessInfo;
 		}
 
-		ExFreePoolWithTag(memory, PoolTag);
+		ExFreePoolWithTag(memory, POOL_TAG);
 	}
 
 	return STATUS_NOT_FOUND;
