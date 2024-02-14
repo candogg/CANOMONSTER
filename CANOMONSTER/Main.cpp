@@ -93,6 +93,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 		return status;
 	}
 
+	SendMessageToPipe();
+
 	return status;
 }
 
@@ -492,6 +494,39 @@ NTSTATUS GetProcessIdByName(PUNICODE_STRING ProcessName, HANDLE* ProcessId)
 NTSTATUS GetProcessByProcessId(HANDLE ProcessId, PEPROCESS* Process)
 {
 	NTSTATUS status = PsLookupProcessByProcessId(ProcessId, Process);
+
+	return status;
+}
+
+NTSTATUS SendMessageToPipe()
+{
+	UNICODE_STRING pipeName;
+	RtlInitUnicodeString(&pipeName, PIPE_NAME);
+
+	IO_STATUS_BLOCK ioStatus;
+	OBJECT_ATTRIBUTES objectAttributes{};
+	InitializeObjectAttributes(&objectAttributes, &pipeName, OBJ_KERNEL_HANDLE, NULL, NULL);
+
+	HANDLE pipeHandle;
+	NTSTATUS status = ZwCreateFile(&pipeHandle, FILE_GENERIC_WRITE, &objectAttributes, &ioStatus, NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN, 0, NULL, 0);
+
+	if (!NT_SUCCESS(status))
+	{
+		DbgPrintEx(0, 0, "Pipe acilamadi\n");
+		return status;
+	}
+
+	WCHAR message[] = L"Hello from kernel mode!";
+	ULONG messageLength = sizeof(message);
+
+	status = ZwWriteFile(pipeHandle, NULL, NULL, NULL, &ioStatus, message, messageLength, NULL, NULL);
+
+	if (!NT_SUCCESS(status))
+	{
+		DbgPrintEx(0, 0, "Pipe mesaj gonderilemedi\n");
+	}
+
+	ZwClose(pipeHandle);
 
 	return status;
 }
