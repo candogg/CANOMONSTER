@@ -329,12 +329,10 @@ OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB
 		switch (OperationInformation->Operation) {
 		case OB_OPERATION_HANDLE_CREATE:
 			DesiredAccess = &OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
-			DbgPrintEx(0, 0, "HandleCreate / Desired access: %d\n", OperationInformation->Parameters->CreateHandleInformation.DesiredAccess);
 			IsProtected = TRUE;
 			break;
 		case OB_OPERATION_HANDLE_DUPLICATE:
 			DesiredAccess = &OperationInformation->Parameters->DuplicateHandleInformation.DesiredAccess;
-			DbgPrintEx(0, 0, "HandleDuplicate / Desired access: %d\n", OperationInformation->Parameters->DuplicateHandleInformation.DesiredAccess);
 			IsProtected = TRUE;
 			break;
 		default:
@@ -505,10 +503,10 @@ NTSTATUS SendMessageToPipe()
 
 	IO_STATUS_BLOCK ioStatus;
 	OBJECT_ATTRIBUTES objectAttributes{};
-	InitializeObjectAttributes(&objectAttributes, &pipeName, OBJ_KERNEL_HANDLE, NULL, NULL);
+	InitializeObjectAttributes(&objectAttributes, &pipeName, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
 
 	HANDLE pipeHandle;
-	NTSTATUS status = ZwCreateFile(&pipeHandle, FILE_GENERIC_WRITE, &objectAttributes, &ioStatus, NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN, 0, NULL, 0);
+	NTSTATUS status = ZwCreateFile(&pipeHandle, SYNCHRONIZE | FILE_WRITE_DATA, &objectAttributes, &ioStatus, NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN, 0, NULL, 0);
 
 	if (!NT_SUCCESS(status))
 	{

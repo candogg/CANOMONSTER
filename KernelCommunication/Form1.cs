@@ -45,9 +45,9 @@ namespace KernelCommunication
                     pipeServer.WaitForConnection();
 
                     var readBuffer = new byte[2048];
-                    pipeServer.Read(readBuffer, 0, readBuffer.Length);
+                    var bytesRead = pipeServer.Read(readBuffer, 0, readBuffer.Length);
 
-                    var message = Encoding.UTF8.GetString(readBuffer).TrimEnd((char)0).Trim();
+                    var message = Encoding.Unicode.GetString(readBuffer, 0, bytesRead);
 
                     Invoke((MethodInvoker)delegate
                     {

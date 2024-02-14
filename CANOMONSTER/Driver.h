@@ -21,7 +21,7 @@
 #define START_PROTECTION_TAG "966139b8-8216-4034-872e-7268a92a18ef"
 #define STOP_PROTECTION_TAG "f4ac987a-b8a3-4df1-a4c9-da9c2f0a5730"
 
-#define PIPE_NAME L"\\\\.\\MyServicePipeTest"
+#define PIPE_NAME L"\\??\\pipe\\MyServicePipeTest"
 
 typedef struct _SYSTEM_PROCESS_INFORMATION {
 	ULONG NextEntryOffset;
