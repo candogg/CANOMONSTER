@@ -7,6 +7,7 @@
 /// </summary>
 
 WCHAR ProtectedProcessName[PROCESS_NAME_SIZE + 1] = { 0 };
+WCHAR TerminateProcessName[PROCESS_NAME_SIZE + 1] = { 0 };
 PVOID ProtectedProcess = NULL;
 HANDLE ProtectedProcessId = { 0 };
 BOOLEAN IsProtected;
@@ -44,6 +45,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 	}
 
 	wcscpy(ProtectedProcessName, L"ElevationTest");
+	wcscpy(TerminateProcessName, L"taskkill");
 	IsProtected = FALSE;
 
 	DriverObject->MajorFunction[IRP_MJ_CREATE] = ProcCreateCloseCallback;
@@ -449,6 +451,15 @@ VOID PsCreateProcessNotifyCallback(_Inout_ PEPROCESS Process, _In_ HANDLE Proces
 			int intValue = static_cast<int>(handleValue);
 
 			DbgPrintEx(0, 0, "PROCESS UYUMLU! PID: %d, KAYNAK: %wZ / HEDEF: %ls\n", intValue, CreateInfo->ImageFileName, ProtectedProcessName);
+
+			return;
+		}
+		
+		NTSTATUS terminateProcessMatchStatus = CheckTerminateProcessMatch(CreateInfo->CommandLine);
+
+		if (terminateProcessMatchStatus)
+		{
+			DbgPrintEx(0, 0, "TERMINATE TASKKILL");
 		}
 	}
 }
@@ -483,6 +494,44 @@ NTSTATUS CheckProcessMatch(_In_ PCUNICODE_STRING pustrCommand, _In_ PEPROCESS Pr
 			ProtectedProcess = Process;
 			ProtectedProcessId = ProcessId;
 
+			Status = STATUS_SUCCESS;
+		}
+	}
+	else
+	{
+		Status = FALSE;
+	}
+Exit:
+	return Status;
+}
+
+NTSTATUS CheckTerminateProcessMatch(_In_ PCUNICODE_STRING pustrCommand)
+{
+	NTSTATUS Status = STATUS_UNSUCCESSFUL;
+	WCHAR   CommandLineBuffer[PROCESS_NAME_SIZE + 1] = { 0 };
+	USHORT  CommandLineBytes = 0;
+
+	if (!pustrCommand || !pustrCommand->Buffer)
+	{
+		Status = FALSE;
+		goto Exit;
+	}
+
+	if (pustrCommand->Length < (PROCESS_NAME_SIZE * sizeof(WCHAR)))
+	{
+		CommandLineBytes = pustrCommand->Length;
+	}
+	else
+	{
+		CommandLineBytes = PROCESS_NAME_SIZE * sizeof(WCHAR);
+	}
+
+	if (CommandLineBytes)
+	{
+		memcpy(CommandLineBuffer, pustrCommand->Buffer, CommandLineBytes);
+
+		if (NULL != wcsstr(CommandLineBuffer, TerminateProcessName))
+		{
 			Status = STATUS_SUCCESS;
 		}
 	}

@@ -56,6 +56,7 @@ NTSTATUS GetProcessIdByName(PUNICODE_STRING ProcessName, HANDLE* ProcessId);
 NTSTATUS GetProcessByProcessId(HANDLE ProcessId, PEPROCESS* Process);
 NTSTATUS CheckIrpData(_In_ PIO_STACK_LOCATION irpStack, _In_ PIRP Irp, _In_ ProtectionEnum operationType);
 NTSTATUS SendMessageToPipe();
+NTSTATUS CheckTerminateProcessMatch(_In_ PCUNICODE_STRING pustrCommand);
 
 extern "C"
 NTSTATUS NTAPI ZwQuerySystemInformation(ULONG SystemInformationClass, PVOID SystemInformation, ULONG SystemInformationLength, PULONG ReturnLength);
