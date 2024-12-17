@@ -23,7 +23,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 	HANDLE processId;
 	PEPROCESS process = nullptr;
 	UNICODE_STRING processName;
-	RtlInitUnicodeString(&processName, L"ProtectedService.exe");
+	RtlInitUnicodeString(&processName, L"ElevationTest.exe");
 
 	status = GetProcessIdByName(&processName, &processId);
 
@@ -43,7 +43,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 		}
 	}
 
-	wcscpy(ProtectedProcessName, L"ProtectedService");
+	wcscpy(ProtectedProcessName, L"ElevationTest");
 	IsProtected = FALSE;
 
 	DriverObject->MajorFunction[IRP_MJ_CREATE] = ProcCreateCloseCallback;
@@ -272,11 +272,13 @@ NTSTATUS RegisterCallbacks(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT DeviceObj
 	OperationRegistrations[0].Operations |= OB_OPERATION_HANDLE_CREATE;
 	OperationRegistrations[0].Operations |= OB_OPERATION_HANDLE_DUPLICATE;
 	OperationRegistrations[0].PreOperation = PreProcessHandleCallback;
+	OperationRegistrations[0].PostOperation = PostProcessHandleCallback;
 
 	OperationRegistrations[1].ObjectType = PsThreadType;
 	OperationRegistrations[1].Operations |= OB_OPERATION_HANDLE_CREATE;
 	OperationRegistrations[1].Operations |= OB_OPERATION_HANDLE_DUPLICATE;
 	OperationRegistrations[1].PreOperation = PreProcessHandleCallback;
+	OperationRegistrations[1].PostOperation = PostProcessHandleCallback;
 
 	UNICODE_STRING Altitude;
 	RtlInitUnicodeString(&Altitude, L"1000");
@@ -298,6 +300,14 @@ NTSTATUS RegisterCallbacks(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT DeviceObj
 	return status;
 }
 
+VOID PostProcessHandleCallback(PVOID RegistrationContext, POB_POST_OPERATION_INFORMATION PostOperationInformation)
+{
+	UNREFERENCED_PARAMETER(RegistrationContext);
+	UNREFERENCED_PARAMETER(PostOperationInformation);
+
+	DbgPrint("Post operation request.");
+}
+
 OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB_PRE_OPERATION_INFORMATION OperationInformation)
 {
 	UNREFERENCED_PARAMETER(RegistrationContext);
@@ -305,6 +315,14 @@ OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB
 	PACCESS_MASK DesiredAccess = NULL;
 	ACCESS_MASK AccessBitsToClear = 0;
 	ACCESS_MASK AccessBitsToSet = 0;
+	ACCESS_MASK InitialDesiredAccess = 0;
+	ACCESS_MASK OriginalDesiredAccess = 0;
+
+	LPCWSTR ObjectTypeName = NULL;
+	LPCWSTR OperationName = NULL;
+
+	UNICODE_STRING commandLine;
+	RtlInitEmptyUnicodeString(&commandLine, NULL, 0);
 
 	if (OperationInformation->ObjectType == *PsProcessType)
 	{
@@ -325,14 +343,19 @@ OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB
 		}
 
 		AccessBitsToClear = CB_PROCESS_TERMINATE | CB_PROCESS_CREATE_PROCESS | CB_PROCESS_DUP_HANDLE;
+		ObjectTypeName = L"PsProcessType";
 
 		switch (OperationInformation->Operation) {
 		case OB_OPERATION_HANDLE_CREATE:
 			DesiredAccess = &OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
+			OriginalDesiredAccess = OperationInformation->Parameters->CreateHandleInformation.OriginalDesiredAccess;
+			OperationName = L"OB_OPERATION_HANDLE_CREATE";
 			IsProtected = TRUE;
 			break;
 		case OB_OPERATION_HANDLE_DUPLICATE:
 			DesiredAccess = &OperationInformation->Parameters->DuplicateHandleInformation.DesiredAccess;
+			OriginalDesiredAccess = OperationInformation->Parameters->CreateHandleInformation.OriginalDesiredAccess;
+			OperationName = L"OB_OPERATION_HANDLE_DUPLICATE";
 			IsProtected = TRUE;
 			break;
 		default:
@@ -348,15 +371,20 @@ OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB
 			goto Exit;
 		}
 
-		AccessBitsToClear = CB_THREAD_TERMINATE;
+		AccessBitsToClear = CB_THREAD_TERMINATE ;
+		ObjectTypeName = L"PsThreadType";
 
 		switch (OperationInformation->Operation) {
 		case OB_OPERATION_HANDLE_CREATE:
 			DesiredAccess = &OperationInformation->Parameters->CreateHandleInformation.DesiredAccess;
+			OriginalDesiredAccess = OperationInformation->Parameters->CreateHandleInformation.OriginalDesiredAccess;
+			OperationName = L"OB_OPERATION_HANDLE_CREATE";
 			IsProtected = TRUE;
 			break;
 		case OB_OPERATION_HANDLE_DUPLICATE:
 			DesiredAccess = &OperationInformation->Parameters->DuplicateHandleInformation.DesiredAccess;
+			OriginalDesiredAccess = OperationInformation->Parameters->CreateHandleInformation.OriginalDesiredAccess;
+			OperationName = L"OB_OPERATION_HANDLE_DUPLICATE";
 			IsProtected = TRUE;
 			break;
 		default:
@@ -370,11 +398,39 @@ OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB
 
 	AccessBitsToSet = 0;
 
+	InitialDesiredAccess = *DesiredAccess;
+
 	if (OperationInformation->KernelHandle != 1 && DesiredAccess != NULL)
 	{
 		*DesiredAccess &= ~AccessBitsToClear;
 		*DesiredAccess |= AccessBitsToSet;
 	}
+
+	/*if (DesiredAccess != NULL)
+	{
+		*DesiredAccess &= ~AccessBitsToClear;
+		*DesiredAccess |= AccessBitsToSet;
+
+		DbgPrintEx(0, 0,
+			"ObCallbackTest: CBTdPreOperationCallback\n"
+			"    Client Id:    %p:%p\n"
+			"    Object:       %p\n"
+			"    Type:         %ls\n"
+			"    Operation:    %ls (KernelHandle=%d)\n"
+			"    OriginalDesiredAccess: 0x%x\n"
+			"    DesiredAccess (in):    0x%x\n"
+			"    DesiredAccess (out):   0x%x\n",
+			PsGetCurrentProcessId(),
+			PsGetCurrentThreadId(),
+			OperationInformation->Object,
+			ObjectTypeName,
+			OperationName,
+			OperationInformation->KernelHandle,
+			OriginalDesiredAccess,
+			InitialDesiredAccess,
+			*DesiredAccess
+		);
+	}*/
 Exit:
 	return OB_PREOP_SUCCESS;
 }

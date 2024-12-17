@@ -9,6 +9,9 @@
 #define CB_PROCESS_TERMINATE 0x0001
 #define CB_PROCESS_CREATE_PROCESS 0x0080
 #define CB_PROCESS_DUP_HANDLE 0x0040
+#define CB_PROCESS_VM_WRITE 0x0020
+#define CB_PROCESS_VM_OPERATION 0x0008
+#define CB_SYNCHRONIZE 0x00100000L
 
 #define CB_THREAD_TERMINATE  0x0001
 
@@ -41,6 +44,7 @@ NTSTATUS ProcCreateCloseCallback(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS CompleteRequest(PIRP Irp, NTSTATUS status = STATUS_SUCCESS, ULONG_PTR info = 0);
 VOID DriverUnload(PDRIVER_OBJECT DriverObject);
 NTSTATUS RegisterCallbacks(PDRIVER_OBJECT DriverObject, PDEVICE_OBJECT DeviceObject);
+VOID PostProcessHandleCallback(PVOID RegistrationContext, POB_POST_OPERATION_INFORMATION PostOperationInformation);
 OB_PREOP_CALLBACK_STATUS PreProcessHandleCallback(PVOID RegistrationContext, POB_PRE_OPERATION_INFORMATION OperationInformation);
 VOID PsCreateProcessNotifyCallback(_Inout_ PEPROCESS Process, _In_ HANDLE ProcessId, _In_opt_ PPS_CREATE_NOTIFY_INFO CreateInfo);
 NTSTATUS CheckProcessMatch(_In_ PCUNICODE_STRING pustrCommand, _In_ PEPROCESS Process, _In_ HANDLE ProcessId);
